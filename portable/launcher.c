@@ -203,8 +203,16 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR cmdline,
     }
 
     // ---- 1. тихая установка ----
+    // DESKTOP_SHORTCUT/STARTMENU_SHORTCUT — публичные MSI-свойства (Property-таблица пакета,
+    // по умолчанию оба 1), от них условны компоненты DesktopShortcut/ProgramMenuShortcut.
+    // Важно: условие в Component-таблице — это голое имя свойства ("DESKTOP_SHORTCUT"), а не
+    // сравнение со значением. В MSI такое условие означает «свойство задано (не пусто)» —
+    // DESKTOP_SHORTCUT=0 его ЗАДАЁТ (просто значением "0"), поэтому ярлык всё равно ставился.
+    // Чтобы условие стало ложным, свойство нужно не задать нулём, а обнулить пустой строкой —
+    // тогда msiexec трактует это как явную отмену дефолта из Property-таблицы.
     wchar_t cmd[MAX_PATH * 2];
-    wsprintfW(cmd, L"msiexec.exe /i \"%s\" /quiet /norestart", msi_path);
+    wsprintfW(cmd, L"msiexec.exe /i \"%s\" /quiet /norestart DESKTOP_SHORTCUT=\"\" STARTMENU_SHORTCUT=\"\"",
+              msi_path);
     DWORD install_rc = runAndWait(cmd, TRUE, NULL);
     // 3010 = ERROR_SUCCESS_REBOOT_REQUIRED — тоже успех, просто просит перезагрузку.
     if (install_rc != 0 && install_rc != 3010)
