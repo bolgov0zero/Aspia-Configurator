@@ -141,12 +141,3 @@ proxy), а не самим приложением. Для варианта «С 
 sudo ./uninstall.sh          # сервис удалить, данные оставить
 sudo ./uninstall.sh --purge  # удалить и данные с настройками
 ```
-
-## Тесты
-
-Ядро (`app/msipatch.py`) покрыто тестами, им нужны `wixl`, `msitools`, `gcab`. Тест на реальном пакете из `samples/`
-(проверяет, что вложенные storages и их CLSID сохраняются) запускается, если задан `MSIRB_MSITOOLS_DIR`:
-
-```bash
-MSIRB_MSITOOLS_DIR=/opt/msi-rebuilder/msitools python3 -m unittest tests/test_msipatch.py -v
-```
