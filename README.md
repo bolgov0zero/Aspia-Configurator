@@ -164,24 +164,3 @@ proxy), а не самим приложением. Для варианта «С 
 sudo ./uninstall.sh          # сервис удалить, данные оставить
 sudo ./uninstall.sh --purge  # удалить и данные с настройками
 ```
-
-## Тесты
-
-Ядро (`app/msipatch.py`) покрыто тестами, им нужны `wixl`, `msitools`, `gcab`. Тест на реальном пакете из `samples/`
-(проверяет, что вложенные storages и их CLSID сохраняются) запускается, если задан `MSIRB_MSITOOLS_DIR`:
-
-```bash
-MSIRB_MSITOOLS_DIR=/opt/msi-rebuilder/msitools python3 -m unittest tests/test_msipatch.py -v
-```
-
-Остальное (`test_aspia_settings.py`, `test_github_releases.py`, `test_portable_build.py`) — без внешних
-инструментов, кроме `cryptography` как fallback для scrypt при отсутствии `hashlib.scrypt`:
-
-```bash
-python3 -m unittest discover -s tests -v
-```
-
-Сам лаунчер (`portable/launcher.c`) тестами не покрыт — это C/WinAPI-код без Windows-окружения под рукой;
-формат склейки (`app/portable_build.py`) проверен тестами и вручную сверен с реальным собранным `stub.exe`
-(побайтовое совпадение извлечённого MSI после прогона через Wine), а собственно `msiexec`/UAC/служба —
-только на настоящей Windows-машине.
