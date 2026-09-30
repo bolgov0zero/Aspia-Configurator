@@ -247,6 +247,9 @@ def build():
             # action_exit->setEnabled(!isApplicationShutdownDisabled())) — без него нечем
             # просигналить лаунчеру, что пора тихо удалить пакет. Portable без Exit не работает.
             settings_kwargs["misc"]["disable_shutdown"] = False
+            # для Portable необязательно заводить именованного пользователя — подключение может
+            # идти через одноразовый пароль (раздел OTP)
+            settings_kwargs["require_users"] = False
         settings = aspia_settings.build_settings_json(**settings_kwargs)
         payload.write_text(json.dumps(settings, ensure_ascii=False), "utf-8")
 

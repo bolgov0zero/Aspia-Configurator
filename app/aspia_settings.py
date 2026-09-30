@@ -213,14 +213,14 @@ SYSTEM_DEFAULTS = {
 
 def build_settings_json(*, general: dict, updates: dict, confirm: dict, otp: dict,
                         router: dict, security: Optional[dict], misc: dict,
-                        users: List[UserInput]) -> dict:
+                        users: List[UserInput], require_users: bool = True) -> dict:
     """Собирает словарь для экспорта Aspia Host (host/settings_util.cc), но пишет в него только
     то, что реально отличается от значений по умолчанию самой программы — остальное и так стоит
-    правильно сразу после установки, дублировать нечего. Список пользователей — исключение:
-    в нём нет «умолчания», кроме пустого, и раз пользователь заполнял форму, значит список
-    заведомо не пуст. У пользователя без password (импортирован из файла и не менялся) должны
-    быть заданы srp_salt/srp_verifier — его SRP-запись переносится как есть."""
-    if not users:
+    правильно сразу после установки, дублировать нечего. У пользователя без password (импортирован
+    из файла и не менялся) должны быть заданы srp_salt/srp_verifier — его SRP-запись переносится
+    как есть. require_users=False снимает требование «хотя бы один» — нужно для Portable, где
+    подключение может идти через одноразовый пароль без именованной учётной записи."""
+    if require_users and not users:
         raise SettingsError("Нужен хотя бы один пользователь — иначе подключиться будет некому")
 
     seen = set()
@@ -255,7 +255,9 @@ def build_settings_json(*, general: dict, updates: dict, confirm: dict, otp: dic
     }
     # только отличия от дефолта программы — совпадающее с дефолтом просто не пишем
     database = {k: v for k, v in full_db.items() if v != DB_DEFAULTS[k]}
-    database["users"] = user_records   # всегда — раз форму заполняли, список не пуст
+    if user_records:
+        database["users"] = user_records
+    # иначе не пишем вовсе — пустой список ничем не отличается от того, что и так дефолт
 
     if security and security.get("enabled"):
         if security.get("from_file"):

@@ -12,18 +12,24 @@
 //   1. читает сам себя, извлекает MSI во временный файл;
 //   2. msiexec /i <temp>\package.msi /quiet — тихая установка (сервис ставится и стартует сам);
 //   3. запускает %ProgramFiles%\Aspia\Host\aspia_host.exe — штатный GUI хоста, коннектится к
-//      уже поднятой службе и открывает окно;
-//   4. ждёт, пока этот процесс реально завершится (пользователь выбрал Exit в трее и подтвердил —
-//      именно на этом единственном варианте реального завершения процесса и построена вся схема,
-//      см. host_window.cc::closeEvent/onExit в исходниках Aspia — обычное закрытие окна крестиком
-//      прячет его в трей и процесс не завершает);
+//      уже поднятой службе и открывает окно; у найденного окна извне (без внедрения в процесс)
+//      убирается кнопка сворачивания — в Portable-сценарии нужны только два состояния, «открыто»
+//      и «закрыто», без промежуточного «висит в трее»;
+//   4. ждёт сигнала «готово»: окно стало невидимым (крестик — по умолчанию у самой программы это
+//      hideToTray(), но раз сворачивания нет, для пользователя это и есть закрытие) ИЛИ процесс
+//      реально завершился (Exit в трее с подтверждением, снятие задачи в диспетчере);
 //   5. msiexec /x <тот же temp-файл> /quiet — тихое удаление: служба, файлы, реестр;
-//   6. подчищает временный каталог.
+//   6. чистит %ProgramData%\aspia (см. шаг 5 в wWinMain — это не MSI-компонент);
+//   7. подчищает временный каталог.
 //
 // requireAdministrator в манифесте (launcher.manifest) даёт один UAC-запрос на старте — дальше
 // весь процесс, включая шаг 5, уже выполняется от администратора без повторных запросов.
+//
+// Важно: крестик закрывает Portable даже при активных сессиях и не спрашивает подтверждения (в
+// отличие от штатного Exit) — это осознанный выбор для одноразового сценария, не ошибка.
 #include <windows.h>
 #include <shlobj.h>
+#include <shellapi.h>
 #include <stdio.h>
 #include <stdint.h>
 
@@ -178,6 +184,49 @@ static DWORD runAndWait(wchar_t* command_line, BOOL wait_for_exit, HANDLE* out_p
     return exit_code;
 }
 
+typedef struct { DWORD pid; HWND result; } FindWindowCtx;
+
+static BOOL CALLBACK enumWindowsProc(HWND hwnd, LPARAM lparam)
+{
+    FindWindowCtx* ctx = (FindWindowCtx*)lparam;
+    DWORD pid = 0;
+    GetWindowThreadProcessId(hwnd, &pid);
+    if (pid != ctx->pid || !IsWindowVisible(hwnd) || GetWindow(hwnd, GW_OWNER) != NULL)
+        return TRUE;   // не то окно — продолжаем перечисление
+    ctx->result = hwnd;
+    return FALSE;       // нашли главное окно — хватит
+}
+
+// Ищет первое видимое окно верхнего уровня без владельца у процесса pid (главное окно Aspia
+// Host появляется не сразу после старта процесса, поэтому опрашиваем с таймаутом).
+static HWND findMainWindow(DWORD pid, DWORD timeout_ms)
+{
+    DWORD start = GetTickCount();
+    for (;;)
+    {
+        FindWindowCtx ctx;
+        ctx.pid = pid;
+        ctx.result = NULL;
+        EnumWindows(enumWindowsProc, (LPARAM)&ctx);
+        if (ctx.result)
+            return ctx.result;
+        if (GetTickCount() - start > timeout_ms)
+            return NULL;
+        Sleep(300);
+    }
+}
+
+// Извне, без внедрения в чужой процесс, убирает кнопку сворачивания у окна Aspia Host — в
+// Portable-сценарии это лишний промежуточный статус («спрятано, но не завершено»), нам нужны
+// только «открыто» и «крестик = готово».
+static void disableMinimizeBox(HWND hwnd)
+{
+    LONG_PTR style = GetWindowLongPtrW(hwnd, GWL_STYLE);
+    SetWindowLongPtrW(hwnd, GWL_STYLE, style & ~WS_MINIMIZEBOX);
+    SetWindowPos(hwnd, NULL, 0, 0, 0, 0,
+                 SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE | SWP_FRAMECHANGED);
+}
+
 int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR cmdline, int show)
 {
     (void)hInstance; (void)hPrevInstance; (void)cmdline; (void)show;
@@ -252,8 +301,23 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR cmdline,
         }
         else
         {
-            // ---- 3. ждём реального завершения процесса (Exit в трее + подтверждение) ----
-            WaitForSingleObject(host_process, INFINITE);
+            DWORD host_pid = GetProcessId(host_process);
+            HWND host_hwnd = findMainWindow(host_pid, 15000);
+            if (host_hwnd)
+                disableMinimizeBox(host_hwnd);
+
+            // ---- 3. ждём сигнала «готово»: крестик (окно спряталось/закрылось) ИЛИ процесс
+            // реально завершился (Exit в трее, снятие задачи в диспетчере). Кнопки свернуть нет,
+            // так что видимых состояний у окна остаётся два: открыто или закрыто — без
+            // промежуточного «висит в трее», характерного для обычного использования программы.
+            for (;;)
+            {
+                DWORD wr = WaitForSingleObject(host_process, 300);
+                if (wr == WAIT_OBJECT_0)
+                    break;
+                if (host_hwnd && (!IsWindow(host_hwnd) || !IsWindowVisible(host_hwnd)))
+                    break;
+            }
             CloseHandle(host_process);
         }
     }
@@ -262,7 +326,28 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR cmdline,
     wsprintfW(cmd, L"msiexec.exe /x \"%s\" /quiet /norestart", msi_path);
     runAndWait(cmd, TRUE, NULL);
 
-    // ---- 5. подчистка временного файла ----
+    // ---- 5. подчистка ProgramData ----
+    // %ProgramData%\aspia (BasePaths::appConfigDir() в исходниках хоста) — не MSI-компонент,
+    // программа создаёт этот каталог сама на лету (там лежит host.db3 — реальное хранилище
+    // настроек), поэтому msiexec /x его не трогает. Без этого шага Portable оставляет за собой
+    // самое важное — базу с пользователями и настройками.
+    wchar_t common_appdata[MAX_PATH];
+    HRESULT cad_hr = SHGetFolderPathW(NULL, CSIDL_COMMON_APPDATA, NULL, SHGFP_TYPE_CURRENT, common_appdata);
+    if (SUCCEEDED(cad_hr))
+    {
+        wchar_t del_path[MAX_PATH + 16];
+        ZeroMemory(del_path, sizeof(del_path));   // SHFileOperationW требует двойной \0 в конце списка
+        wsprintfW(del_path, L"%s\\aspia", common_appdata);
+
+        SHFILEOPSTRUCTW op;
+        ZeroMemory(&op, sizeof(op));
+        op.wFunc = FO_DELETE;
+        op.pFrom = del_path;
+        op.fFlags = FOF_NO_UI;   // без диалогов, без корзины — насовсем
+        SHFileOperationW(&op);
+    }
+
+    // ---- 6. подчистка временного файла ----
     DeleteFileW(msi_path);
     RemoveDirectoryW(work_dir);
 

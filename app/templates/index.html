@@ -974,13 +974,14 @@
     var goButtons = [document.getElementById('go'), document.getElementById('go-portable')];
     var goLabels = goButtons.map(function (b) { return b.innerHTML; });
     buildForm.addEventListener('submit', function (ev) {
-      if (users.length === 0) {
+      var clicked = ev.submitter || goButtons[0];
+      // Для Portable пользователь необязателен — можно подключиться по одноразовому паролю.
+      if (users.length === 0 && clicked.value !== 'portable') {
         ev.preventDefault();
         showPane('users');
         toast('Добавьте хотя бы одного пользователя');
         return;
       }
-      var clicked = ev.submitter || goButtons[0];
       // Отключать кнопки синхронно здесь нельзя: disabled-элемент браузер не включает в
       // отправляемые данные формы, а у кнопок build_target=msi/portable — это и есть то самое
       // поле, которым сервер отличает MSI от Portable. Откладываем на следующий тик, когда форма

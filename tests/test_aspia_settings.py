@@ -125,6 +125,11 @@ class BuildSettingsJsonTest(unittest.TestCase):
         with self.assertRaises(a.SettingsError):
             a.build_settings_json(**_default_kwargs(users=[]))
 
+    def test_require_users_false_allows_empty_list(self):
+        # Portable: подключение может идти по одноразовому паролю, именованный пользователь не нужен
+        doc = a.build_settings_json(**_default_kwargs(users=[], require_users=False))
+        self.assertNotIn("users", doc.get("database", {}))
+
     def test_user_validation_guards(self):
         dup = [{"name": "admin", "password": "AdminPass1", "sessions": 1, "enabled": True},
                {"name": "Admin", "password": "Other12345", "sessions": 1, "enabled": True}]
