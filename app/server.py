@@ -24,9 +24,11 @@ from flask import Flask, Response, abort, flash, redirect, render_template, requ
 import aspia_settings
 import github_releases
 import msipatch
+import portable_build
 from aspia_settings import SettingsError
 from github_releases import ReleasesError
 from msipatch import MsiError
+from portable_build import PortableBuildError
 
 DATA_DIR = Path(os.environ.get("MSIRB_DATA_DIR", "/var/lib/msi-rebuilder"))
 TMP_DIR = DATA_DIR / "tmp"
@@ -34,6 +36,7 @@ COUNTER_FILE = DATA_DIR / "build_count"   # счётчик успешных сб
 AUTH_USER = os.environ.get("MSIRB_USER", "admin")
 AUTH_PASSWORD = os.environ.get("MSIRB_PASSWORD", "")   # пусто — доступ без пароля
 MAX_UPLOAD_MB = int(os.environ.get("MSIRB_MAX_UPLOAD_MB", "1024"))
+PORTABLE_STUB = Path(os.environ.get("MSIRB_PORTABLE_DIR", "/opt/msi-rebuilder/portable")) / "stub.exe"
 
 DATA_DIR.mkdir(parents=True, exist_ok=True)
 TMP_DIR.mkdir(parents=True, exist_ok=True)
@@ -225,6 +228,7 @@ def build():
             return redirect(url_for("index"))
 
     delete_after = bool(request.form.get("delete_after"))
+    build_target = request.form.get("build_target", "msi")   # "msi" | "portable"
 
     work = Path(tempfile.mkdtemp(dir=TMP_DIR))
     try:
@@ -237,15 +241,27 @@ def build():
             raise MsiError("Исходный файл не является MSI-пакетом")
 
         payload = work / "payload"
-        settings = aspia_settings.build_settings_json(**_settings_from_form())
+        settings_kwargs = _settings_from_form()
+        if build_target == "portable":
+            # «Запретить закрытие Aspia» отключает пункт Exit в трее (host_window.cc,
+            # action_exit->setEnabled(!isApplicationShutdownDisabled())) — без него нечем
+            # просигналить лаунчеру, что пора тихо удалить пакет. Portable без Exit не работает.
+            settings_kwargs["misc"]["disable_shutdown"] = False
+        settings = aspia_settings.build_settings_json(**settings_kwargs)
         payload.write_text(json.dumps(settings, ensure_ascii=False), "utf-8")
 
         dst = work / "out.msi"
         msipatch.add_import_file(str(src), str(dst), str(payload), "aspia-host.json", str(work),
                                  delete_after=delete_after,
                                  new_package_code=bool(request.form.get("new_package_code")))
-        data = dst.read_bytes()
-    except (MsiError, SettingsError, ReleasesError) as e:
+
+        if build_target == "portable":
+            portable_dst = work / "out.exe"
+            portable_build.build_portable_exe(PORTABLE_STUB, dst, portable_dst)
+            data = portable_dst.read_bytes()
+        else:
+            data = dst.read_bytes()
+    except (MsiError, SettingsError, ReleasesError, PortableBuildError) as e:
         flash(str(e), "error")
         return redirect(url_for("index"))
     except Exception as e:  # noqa: BLE001
@@ -256,6 +272,10 @@ def build():
         shutil.rmtree(work, ignore_errors=True)
 
     bump_build_count()
+    if build_target == "portable":
+        return send_file(io.BytesIO(data), as_attachment=True,
+                         download_name="Aspia Host Portable.exe", mimetype="application/x-msdownload")
+
     raw_stem = Path((release["asset_name"] if release else pkg_upload.filename).replace("\\", "/")).stem
     pkg_stem = "".join(c for c in raw_stem if c.isalnum() or c in "._-() ").strip() or "aspia-host"
     download_name = "%s_mod.msi" % pkg_stem

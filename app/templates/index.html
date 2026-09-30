@@ -524,7 +524,7 @@
 
           <div class="settings-pane" data-pane="misc">
             <h3>Разное</h3>
-            <label class="check last"><input type="checkbox" name="disable_shutdown" value="1"><span class="box"></span><span class="txt">Запретить закрытие Aspia</span></label>
+            <label class="check last"><input type="checkbox" name="disable_shutdown" value="1"><span class="box"></span><span class="txt">Запретить закрытие Aspia<div class="hint">Для Portable-сборки игнорируется — иначе некому будет завершить работу и запустить удаление</div></span></label>
           </div>
 
           <div class="settings-pane" data-pane="users">
@@ -562,11 +562,17 @@
 
     <section class="card">
       <div class="final-actions">
-        <button type="submit" id="go">
+        <button type="submit" id="go" name="build_target" value="msi">
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v14M6 10l6 6 6-6M4 20h16"/></svg>
           Собрать пакет
         </button>
-        <span class="hint" style="margin:0" id="submit-hint">Соберёт файл настроек по этим полям (пароли новых или изменённых пользователей уйдут на сервер только для расчёта, без сохранения), вошьёт в выбранный пакет и сразу предложит его скачать.</span>
+        <button type="submit" id="go-portable" class="secondary" name="build_target" value="portable"
+                title="Один .exe: тихо ставит, открывает окно Aspia Host, а после Exit в трее тихо удаляет всё сам">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="2" width="16" height="20" rx="2"/><line x1="9" y1="18" x2="15" y2="18"/></svg>
+          Собрать Portable
+        </button>
+        <span class="hint" style="margin:0" id="submit-hint">Соберёт файл настроек по этим полям (пароли новых или изменённых пользователей уйдут на сервер только для расчёта, без сохранения), вошьёт в выбранный пакет и сразу предложит его скачать.
+          «Portable» — то же самое, но одним .exe: сам тихо ставится, открывает окно Aspia Host, а когда пользователь выберет Exit в трее — так же тихо удаляет себя со всеми файлами.</span>
       </div>
     </section>
   </form>
@@ -965,7 +971,8 @@
     setInterval(pollCount, 4000);
 
     var buildForm = document.getElementById('build-form');
-    var goBtn = document.getElementById('go'), goLabel = goBtn.innerHTML;
+    var goButtons = [document.getElementById('go'), document.getElementById('go-portable')];
+    var goLabels = goButtons.map(function (b) { return b.innerHTML; });
     buildForm.addEventListener('submit', function (ev) {
       if (users.length === 0) {
         ev.preventDefault();
@@ -973,8 +980,18 @@
         toast('Добавьте хотя бы одного пользователя');
         return;
       }
-      goBtn.disabled = true; goBtn.textContent = 'Собираю…';
-      setTimeout(function () { goBtn.disabled = false; goBtn.innerHTML = goLabel; }, 6000);
+      var clicked = ev.submitter || goButtons[0];
+      // Отключать кнопки синхронно здесь нельзя: disabled-элемент браузер не включает в
+      // отправляемые данные формы, а у кнопок build_target=msi/portable — это и есть то самое
+      // поле, которым сервер отличает MSI от Portable. Откладываем на следующий тик, когда форма
+      // уже сериализована и ушла.
+      setTimeout(function () {
+        goButtons.forEach(function (b) { b.disabled = true; });
+        clicked.textContent = 'Собираю…';
+      }, 0);
+      setTimeout(function () {
+        goButtons.forEach(function (b, i) { b.disabled = false; b.innerHTML = goLabels[i]; });
+      }, 6000);
       setTimeout(pollCount, 1200);
       setTimeout(pollCount, 2500);
     });

@@ -47,13 +47,15 @@ case "$PASSWORD$WEB_USER" in *[[:space:]\'\"\\\$\#]*) die "логин и пар�
 
 # ---- зависимости
 # msitools собираем из исходников с исправлением libmsi (см. vendor/), поэтому нужны инструменты сборки.
-log "Установка пакетов (gcab, python3-flask, gunicorn + инструменты сборки msitools)"
+# mingw-w64 нужен для лаунчера Aspia Host Portable (portable/launcher.c) — собирается один раз, дальше
+# MSI просто дописывается в его хвост на каждый запрос, компилятор при обычной работе не используется.
+log "Установка пакетов (gcab, python3-flask, gunicorn, mingw-w64 + инструменты сборки msitools)"
 export DEBIAN_FRONTEND=noninteractive
 apt-get update -qq
 apt-get install -y -qq --no-install-recommends \
   gcab python3 python3-flask gunicorn ca-certificates \
   build-essential meson ninja-build pkg-config patch xz-utils bison perl valac gettext \
-  python3-venv python3-pip python3-cryptography \
+  python3-venv python3-pip python3-cryptography mingw-w64 \
   libglib2.0-dev libgsf-1-dev libgcab-dev libxml2-dev >/dev/null
 command -v gcab >/dev/null || die "не удалось установить gcab"
 GUNICORN="$(command -v gunicorn)" || die "gunicorn не найден после установки"
@@ -80,6 +82,12 @@ log "Собираю msitools с исправлением (1-2 минуты)"
   || { tail -n 30 /tmp/msirb-build.log >&2; die "не удалось собрать msitools, полный журнал: /tmp/msirb-build.log"; }
 [ -x "$APP_DIR/msitools/bin/msibuild" ] || die "msibuild не найден после сборки"
 
+# ---- лаунчер Aspia Host Portable (mingw-w64, собирается один раз)
+log "Собираю лаунчер Aspia Host Portable"
+"$SRC_DIR/scripts/build-portable-stub.sh" "$APP_DIR/portable" >/tmp/msirb-portable-build.log 2>&1 \
+  || { tail -n 30 /tmp/msirb-portable-build.log >&2; die "не удалось собрать portable-стаб, полный журнал: /tmp/msirb-portable-build.log"; }
+[ -f "$APP_DIR/portable/stub.exe" ] || die "stub.exe не найден после сборки"
+
 # ---- конфигурация
 set_kv() {  # set_kv KEY VALUE — обновить или добавить строку в env-файл
   local k="$1" v="$2" tmp
@@ -104,6 +112,7 @@ fi
 chown root:"$SVC_USER" "$ENV_FILE"; chmod 0640 "$ENV_FILE"
 
 set_kv MSIRB_MSITOOLS_DIR "$APP_DIR/msitools"
+set_kv MSIRB_PORTABLE_DIR "$APP_DIR/portable"
 [ -z "$PORT" ]     || set_kv MSIRB_PORT "$PORT"
 [ -z "$HOST" ]     || set_kv MSIRB_HOST "$HOST"
 [ -z "$WEB_USER" ] || set_kv MSIRB_USER "$WEB_USER"
