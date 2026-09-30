@@ -184,36 +184,93 @@ static DWORD runAndWait(wchar_t* command_line, BOOL wait_for_exit, HANDLE* out_p
     return exit_code;
 }
 
-typedef struct { DWORD pid; HWND result; } FindWindowCtx;
+// Заголовок окна локализован ("Aspia Host" / "Хост Aspia" / ...) — матчить по тексту нельзя.
+// Отсеиваем по размеру: главное окно (host_window.ui, minimumSize 300x...) заведомо крупнее
+// тултипов/всплывающих уведомлений, которые Qt-приложение может ненадолго показывать при старте
+// помимо своего главного окна.
+#define MIN_MAIN_WINDOW_WIDTH 150
+#define MIN_MAIN_WINDOW_HEIGHT 100
+
+// Матчим не по PID нашего собственного дочернего процесса, а по имени EXE-файла окна. Так надо
+// из-за single-instance у Aspia Host (GuiApplication::isRunning(), lock-файл на основе session_id):
+// если в этой же Windows-сессии уже открыт другой aspia_host.exe (например, оставшийся от
+// предыдущего запуска), наш новый процесс просто активирует то, старое окно и сам почти сразу
+// завершается — а слежка по PID тогда решила бы, что пользователь закрыл программу, хотя реальное
+// окно всё это время оставалось открытым у другого процесса.
+static BOOL isAspiaHostWindow(HWND hwnd)
+{
+    if (!IsWindowVisible(hwnd) || GetWindow(hwnd, GW_OWNER) != NULL)
+        return FALSE;
+
+    RECT r;
+    if (!GetWindowRect(hwnd, &r))
+        return FALSE;
+    if ((r.right - r.left) < MIN_MAIN_WINDOW_WIDTH || (r.bottom - r.top) < MIN_MAIN_WINDOW_HEIGHT)
+        return FALSE;
+
+    DWORD pid = 0;
+    GetWindowThreadProcessId(hwnd, &pid);
+    if (!pid)
+        return FALSE;
+
+    HANDLE proc = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, pid);
+    if (!proc)
+        return FALSE;
+
+    wchar_t image[MAX_PATH];
+    DWORD size = MAX_PATH;
+    BOOL ok = QueryFullProcessImageNameW(proc, 0, image, &size);
+    CloseHandle(proc);
+    if (!ok)
+        return FALSE;
+
+    wchar_t* name = wcsrchr(image, L'\\');
+    name = name ? name + 1 : image;
+    return lstrcmpiW(name, L"aspia_host.exe") == 0;
+}
 
 static BOOL CALLBACK enumWindowsProc(HWND hwnd, LPARAM lparam)
 {
-    FindWindowCtx* ctx = (FindWindowCtx*)lparam;
-    DWORD pid = 0;
-    GetWindowThreadProcessId(hwnd, &pid);
-    if (pid != ctx->pid || !IsWindowVisible(hwnd) || GetWindow(hwnd, GW_OWNER) != NULL)
+    HWND* result = (HWND*)lparam;
+    if (!isAspiaHostWindow(hwnd))
         return TRUE;   // не то окно — продолжаем перечисление
-    ctx->result = hwnd;
+    *result = hwnd;
     return FALSE;       // нашли главное окно — хватит
 }
 
-// Ищет первое видимое окно верхнего уровня без владельца у процесса pid (главное окно Aspia
-// Host появляется не сразу после старта процесса, поэтому опрашиваем с таймаутом).
-static HWND findMainWindow(DWORD pid, DWORD timeout_ms)
+// Ищет главное окно Aspia Host (появляется не сразу после старта процесса, поэтому опрашиваем
+// с таймаутом).
+static HWND findMainWindow(DWORD timeout_ms)
 {
     DWORD start = GetTickCount();
     for (;;)
     {
-        FindWindowCtx ctx;
-        ctx.pid = pid;
-        ctx.result = NULL;
-        EnumWindows(enumWindowsProc, (LPARAM)&ctx);
-        if (ctx.result)
-            return ctx.result;
+        HWND result = NULL;
+        EnumWindows(enumWindowsProc, (LPARAM)&result);
+        if (result)
+            return result;
         if (GetTickCount() - start > timeout_ms)
             return NULL;
         Sleep(300);
     }
+}
+
+static BOOL CALLBACK anyWindowProc(HWND hwnd, LPARAM lparam)
+{
+    BOOL* found = (BOOL*)lparam;
+    if (!isAspiaHostWindow(hwnd))
+        return TRUE;
+    *found = TRUE;
+    return FALSE;
+}
+
+// Есть ли прямо сейчас хоть одно подходящее видимое окно Aspia Host — независимо от того, какой
+// именно процесс его сейчас держит (см. isAspiaHostWindow).
+static BOOL hasMainWindow(void)
+{
+    BOOL found = FALSE;
+    EnumWindows(anyWindowProc, (LPARAM)&found);
+    return found;
 }
 
 // Извне, без внедрения в чужой процесс, убирает кнопку сворачивания у окна Aspia Host — в
@@ -301,24 +358,37 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR cmdline,
         }
         else
         {
-            DWORD host_pid = GetProcessId(host_process);
-            HWND host_hwnd = findMainWindow(host_pid, 15000);
+            // Дальше нам нужен не сам процесс, а факт, что окно Aspia Host открыто — см. ниже,
+            // почему слежка именно за ЭТИМ дочерним процессом ненадёжна.
+            CloseHandle(host_process);
+
+            HWND host_hwnd = findMainWindow(15000);
             if (host_hwnd)
                 disableMinimizeBox(host_hwnd);
 
-            // ---- 3. ждём сигнала «готово»: крестик (окно спряталось/закрылось) ИЛИ процесс
-            // реально завершился (Exit в трее, снятие задачи в диспетчере). Кнопки свернуть нет,
-            // так что видимых состояний у окна остаётся два: открыто или закрыто — без
-            // промежуточного «висит в трее», характерного для обычного использования программы.
+            // ---- 3. ждём сигнала «готово»: устойчивое отсутствие окна Aspia Host. Кнопки
+            // свернуть нет, так что видимых состояний у окна остаётся два: открыто или закрыто —
+            // без промежуточного «висит в трее», характерного для обычного использования
+            // программы.
+            //
+            // Намеренно НЕ ждём завершения именно нашего дочернего процесса: у Aspia Host есть
+            // single-instance (GuiApplication::isRunning(), lock-файл на основе session_id) — если
+            // в этой же сессии Windows уже было открыто другое окно Aspia Host (например, забытое
+            // с прошлого запуска), наш новый процесс просто активирует старое окно и сам сразу же
+            // завершается, а окно при этом продолжает жить в другом, чужом процессе. Единственный
+            // надёжный сигнал — сам факт отсутствия окна Aspia Host (isAspiaHostWindow, без
+            // привязки к конкретному PID), причём устойчивый — несколько проверок подряд, а не
+            // одна, чтобы не среагировать на случайное мигание видимости при перерисовке.
+            int missing_polls = 0;
+            const int required_missing_polls = 5;   // 5 * 300мс ≈ 1.5с устойчивого отсутствия
             for (;;)
             {
-                DWORD wr = WaitForSingleObject(host_process, 300);
-                if (wr == WAIT_OBJECT_0)
-                    break;
-                if (host_hwnd && (!IsWindow(host_hwnd) || !IsWindowVisible(host_hwnd)))
+                Sleep(300);
+                if (hasMainWindow())
+                    missing_polls = 0;
+                else if (++missing_polls >= required_missing_polls)
                     break;
             }
-            CloseHandle(host_process);
         }
     }
 
