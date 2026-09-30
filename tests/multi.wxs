@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
+  <Product Id="*" Name="Test Multi" Language="1033" Version="1.0.0" Manufacturer="Test" UpgradeCode="11111111-2222-3333-4444-666666666666">
+    <Package InstallerVersion="500" Compressed="yes"/>
+    <Media Id="1" Cabinet="main.cab" EmbedCab="yes"/>
+    <Directory Id="TARGETDIR" Name="SourceDir">
+      <Directory Id="ProgramFilesFolder">
+        <Directory Id="INSTALLDIR" Name="Multi">
+          <Component Id="Zeta" Guid="AAAAAAAA-2222-3333-4444-000000000001"><File Id="zfile" Source="hello.txt" KeyPath="yes"/></Component>
+          <Component Id="Alpha" Guid="AAAAAAAA-2222-3333-4444-000000000002"><File Id="afile" Name="a.txt" Source="hello.txt" KeyPath="yes"/></Component>
+          <Directory Id="SUB" Name="sub">
+            <Component Id="Mid" Guid="AAAAAAAA-2222-3333-4444-000000000003"><File Id="mfile" Name="m.txt" Source="hello.txt" KeyPath="yes"/></Component>
+          </Directory>
+        </Directory>
+      </Directory>
+    </Directory>
+    <Feature Id="FeatB" Level="1"><ComponentRef Id="Zeta"/><ComponentRef Id="Mid"/></Feature>
+    <Feature Id="FeatA" Level="1"><ComponentRef Id="Alpha"/></Feature>
+  </Product>
+</Wix>

@@ -1,0 +1,143 @@
+--- a/libmsi/libmsi-database.c
++++ b/libmsi/libmsi-database.c
+@@ -2286,7 +2286,18 @@
+ 
+     return r == LIBMSI_RESULT_SUCCESS;
+ }
++
++/* Copy the CLSID of a storage. libgsf does not do it, and Windows Installer refuses to
++   apply an embedded transform whose storage has no transform CLSID (error 1624). */
++static void copy_storage_clsid(GsfInfile *inf, GsfOutput *outf)
++{
++    uint8_t clsid[16];
+ 
++    if (GSF_IS_INFILE_MSOLE (inf) && GSF_IS_OUTFILE_MSOLE (outf) &&
++        gsf_infile_msole_get_class_id (GSF_INFILE_MSOLE (inf), clsid))
++        gsf_outfile_msole_set_class_id (GSF_OUTFILE_MSOLE (outf), clsid);
++}
++
+ static int gsf_infile_copy(GsfInfile *inf, GsfOutfile *outf)
+ {
+     int n = gsf_infile_num_children(inf);
+@@ -2300,10 +2311,17 @@
+         GsfOutput *dest = gsf_outfile_new_child(outf, name, is_dir);
+         gboolean ok;
+ 
+-        if (is_dir)
++        if (is_dir) {
++            copy_storage_clsid(childf, dest);
+             ok = gsf_infile_copy(childf, GSF_OUTFILE(dest));
+-        else
++        } else
+             ok = gsf_input_copy(child, dest);
++
++        /* Close the output stream. Without this libgsf keeps a large (>= 4096 bytes)
++           stream open and the next such stream fails with
++           "Attempt to wrap an output that is already wrapped" ("failed to save storages"). */
++        if (!gsf_output_close(dest))
++            ok = false;
+ 
+         g_object_unref(G_OBJECT(child));
+         g_object_unref(G_OBJECT(dest));
+@@ -2324,6 +2342,8 @@
+     outstg = GSF_OUTFILE(gsf_outfile_new_child( db->outfile, name, true ));
+     if ( !outstg )
+         return LIBMSI_RESULT_FUNCTION_FAILED;
++
++    copy_storage_clsid(stg, GSF_OUTPUT(outstg));
+ 
+     if ( !gsf_infile_copy( stg, outstg ) )
+         goto end;
+--- a/libmsi/table.c
++++ b/libmsi/table.c
+@@ -867,11 +867,40 @@
+ 
+     return r;
+ }
++
++typedef struct {
++    LibmsiDatabase *db;
++    const LibmsiTable *t;
++} row_sort_ctx;
++
++/* Windows Installer expects the rows of every table to be stored ordered by the primary key
++   (string columns by string id, integer columns by their stored value). libmsi keeps rows
++   in insertion order, so rows added to an existing table end up unsorted and Windows Installer
++   then fails with error 2211 ("Could not create database table"). */
++static int compare_rows_by_key( gconstpointer pa, gconstpointer pb, gpointer opaque )
++{
++    const row_sort_ctx *ctx = opaque;
++    const LibmsiTable *t = ctx->t;
++    unsigned a = *(const unsigned *)pa, b = *(const unsigned *)pb, j;
+ 
++    for (j = 0; j < t->col_count; j++)
++    {
++        unsigned m, va, vb;
++
++        if (!(t->colinfo[j].type & MSITYPE_KEY)) continue;
++        m = bytes_per_column( ctx->db, &t->colinfo[j], LONG_STR_BYTES );
++        va = read_table_int( t->data, a, t->colinfo[j].offset, m );
++        vb = read_table_int( t->data, b, t->colinfo[j].offset, m );
++        if (va != vb) return va < vb ? -1 : 1;
++    }
++    return 0;
++}
++
+ static unsigned save_table( LibmsiDatabase *db, const LibmsiTable *t, unsigned bytes_per_strref )
+ {
+     uint8_t *rawdata = NULL;
+-    unsigned rawsize, i, j, row_size, row_count;
++    unsigned rawsize, i, j, ri, row_size, row_count;
++    unsigned *order = NULL;
+     unsigned r = LIBMSI_RESULT_FUNCTION_FAILED;
+ 
+     /* Nothing to do for non-persistent tables */
+@@ -903,13 +932,30 @@
+     {
+         r = LIBMSI_RESULT_NOT_ENOUGH_MEMORY;
+         goto err;
++    }
++
++    /* write the rows sorted by the primary key (stable sort keeps the original order of equal keys) */
++    order = msi_alloc( (t->row_count ? t->row_count : 1) * sizeof(unsigned) );
++    if( !order )
++    {
++        r = LIBMSI_RESULT_NOT_ENOUGH_MEMORY;
++        goto err;
++    }
++    for (i = 0; i < t->row_count; i++) order[i] = i;
++    {
++        row_sort_ctx ctx = { db, t };
++        unsigned persistent_rows = 0;
++
++        while (persistent_rows < t->row_count && t->data_persistent[persistent_rows]) persistent_rows++;
++        g_qsort_with_data( order, persistent_rows, sizeof(unsigned), compare_rows_by_key, &ctx );
+     }
+ 
+     rawsize = 0;
+-    for (i = 0; i < t->row_count; i++)
++    for (ri = 0; ri < t->row_count; ri++)
+     {
+         unsigned ofs = 0, ofs_mem = 0;
+ 
++        i = order[ri];
+         if (!t->data_persistent[i]) break;
+ 
+         for (j = 0; j < t->col_count; j++)
+@@ -934,7 +980,7 @@
+             }
+             for (k = 0; k < n; k++)
+             {
+-                rawdata[ofs * row_count + i * n + k] = t->data[i][ofs_mem + k];
++                rawdata[ofs * row_count + ri * n + k] = t->data[i][ofs_mem + k];
+             }
+             ofs_mem += m;
+             ofs += n;
+@@ -946,6 +992,7 @@
+     r = write_stream_data( db, t->name, rawdata, rawsize );
+ 
+ err:
++    msi_free( order );
+     msi_free( rawdata );
+     return r;
+ }

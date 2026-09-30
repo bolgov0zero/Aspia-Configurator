@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
+  <Product Id="*" Name="Test Aspia" Language="1033" Version="1.0.0" Manufacturer="Test" UpgradeCode="11111111-2222-3333-4444-555555555555">
+    <Package InstallerVersion="500" Compressed="yes" Platform="x64"/>
+    <Media Id="1" Cabinet="main.cab" EmbedCab="yes"/>
+    <Directory Id="TARGETDIR" Name="SourceDir">
+      <Directory Id="ProgramFiles64Folder">
+        <Directory Id="INSTALLDIR" Name="Aspia">
+          <Component Id="C1" Guid="AAAAAAAA-2222-3333-4444-555555555555" Win64="yes">
+            <File Id="hello" Source="hello.txt" KeyPath="yes"/>
+          </Component>
+        </Directory>
+      </Directory>
+    </Directory>
+    <Feature Id="Main" Level="1"><ComponentRef Id="C1"/></Feature>
+  </Product>
+</Wix>

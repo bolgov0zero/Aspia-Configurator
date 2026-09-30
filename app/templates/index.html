@@ -1,0 +1,984 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#0b0f14">
+<meta name="color-scheme" content="dark">
+<title>Aspia Configurator</title>
+<link rel="icon" type="image/png" sizes="32x32" href="{{ url_for('static', filename='favicon-32.png') }}">
+<link rel="apple-touch-icon" href="{{ url_for('static', filename='apple-touch.png') }}">
+<style>
+  :root {
+    --bg: #0a0d12; --bg-soft: #0d1117; --card: #121722; --card-2: #161d29;
+    --line: #232b39; --line-soft: #1a212c;
+    --text: #e8ecf3; --muted: #8b96a8; --faint: #5b6577;
+    --accent: #4d8fea; --accent-hi: #6ea3ee; --accent-fg: #06111f;
+    --ok: #3ddc97; --ok-bg: rgba(61, 220, 151, .10);
+    --err: #ff6b6b; --err-bg: rgba(255, 107, 107, .10);
+    --warn: #f5b25c; --warn-bg: rgba(245, 178, 92, .10);
+    --code: #0f141c; --shadow: 0 1px 2px rgba(0,0,0,.3), 0 8px 24px -8px rgba(0,0,0,.5);
+    --radius: 10px;
+    color-scheme: dark;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text);
+    font: 13.5px/1.5 -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+  main { max-width: 860px; margin: 0 auto; padding: 22px 16px 60px; }
+  a { color: var(--accent-hi); }
+
+  .topbar { display: flex; align-items: flex-start; justify-content: space-between; gap: 14px; flex-wrap: wrap; margin-bottom: 18px; }
+  .brand-block { flex: 1 1 320px; min-width: 0; }
+  .brand { display: flex; align-items: center; gap: 11px; margin-bottom: 3px; }
+  .brand img { width: 30px; height: 30px; border-radius: 7px; }
+  .brand h1 { font-size: 17px; font-weight: 650; margin: 0; letter-spacing: -.01em; }
+  .brand-sub { font-size: 11.5px; color: var(--faint); margin: 2px 0 0 41px; }
+
+  /* --- счётчик собранных пакетов --- */
+  .counter {
+    display: flex; align-items: center; gap: 9px; flex: 0 0 auto;
+    background: linear-gradient(180deg, var(--card), var(--bg-soft));
+    border: 1px solid var(--line); border-radius: 11px; padding: 8px 15px 8px 12px; box-shadow: var(--shadow);
+    transition: transform .35s cubic-bezier(.34,1.56,.64,1), border-color .35s;
+  }
+  .counter.bump { transform: scale(1.07); border-color: var(--accent); }
+  .counter-icon {
+    flex: 0 0 auto; color: var(--accent-fg); width: 26px; height: 26px; border-radius: 8px;
+    display: flex; align-items: center; justify-content: center;
+    background: linear-gradient(180deg, var(--accent-hi), var(--accent));
+  }
+  .counter-num {
+    display: block; font-size: 19px; font-weight: 750; color: var(--text); line-height: 1.1;
+    letter-spacing: -.01em; font-variant-numeric: tabular-nums; text-shadow: 0 0 18px rgba(77,143,234,.35);
+  }
+  .counter-label { display: block; font-size: 9.5px; color: var(--faint); text-transform: uppercase; letter-spacing: .06em; margin-top: 1px; white-space: nowrap; }
+
+  .card {
+    background: linear-gradient(180deg, var(--card), var(--card) 40%, var(--bg-soft));
+    border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--shadow);
+    padding: 16px; margin-bottom: 14px;
+  }
+  .card h2 {
+    font-size: 12px; font-weight: 650; margin: 0 0 12px; text-transform: uppercase;
+    letter-spacing: .06em; color: var(--muted); display: flex; align-items: center; gap: 7px;
+  }
+  .card h2::before { content: ""; width: 3px; height: 12px; border-radius: 2px; background: var(--accent); display: inline-block; }
+
+  label { display: block; font-weight: 550; margin: 0 0 5px; font-size: 12.5px; color: var(--text); }
+  .field { margin-bottom: 13px; }
+  .hint { color: var(--faint); font-size: 11.5px; margin-top: 4px; line-height: 1.5; }
+  code {
+    background: var(--code); border: 1px solid var(--line-soft); border-radius: 5px; padding: 1px 6px;
+    font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 11.5px; word-break: break-all; color: #c7d4e6;
+  }
+
+  /* --- переключатель режима (сегмент-контрол со скользящей заливкой) --- */
+  .mode-switch { position: relative; display: flex; gap: 4px; background: var(--card-2); border: 1px solid var(--line);
+    border-radius: 11px; padding: 4px; margin-bottom: 16px; }
+  .mode-switch .pill {
+    position: absolute; top: 4px; bottom: 4px; left: 4px; width: calc(50% - 4px);
+    background: linear-gradient(180deg, var(--accent-hi), var(--accent)); border-radius: 8px;
+    box-shadow: 0 1px 0 rgba(255,255,255,.12) inset;
+    transition: transform .32s cubic-bezier(.34,1.56,.64,1);
+  }
+  .mode-switch button {
+    position: relative; z-index: 1; flex: 1; border: 0; background: transparent; color: var(--muted);
+    font: inherit; font-weight: 600; font-size: 12.5px; padding: 9px 10px; border-radius: 8px; cursor: pointer;
+    display: flex; align-items: center; justify-content: center; gap: 7px; transition: color .2s;
+  }
+  .mode-switch button svg { opacity: .75; transition: opacity .2s, transform .2s; }
+  .mode-switch button.active { color: var(--accent-fg); }
+  .mode-switch button.active svg { opacity: 1; transform: scale(1.05); }
+  .mode-switch button:not(.active):hover { color: var(--text); }
+  .mode-switch button:not(.active):active svg { transform: scale(.9); }
+  .mode-switch.mode-switch-sm { margin: 10px 0 14px; }
+
+  /* --- форма: разделы слева, поля справа --- */
+  .settings-shell { display: flex; gap: 0; border: 1px solid var(--line); border-radius: var(--radius);
+    overflow: hidden; box-shadow: var(--shadow); background: var(--bg-soft); }
+  .settings-nav { flex: 0 0 190px; background: var(--card); border-right: 1px solid var(--line); padding: 8px; }
+  .settings-nav button {
+    position: relative; width: 100%; display: flex; align-items: center; gap: 9px; border: 0; background: transparent;
+    color: var(--muted); font: inherit; font-size: 12.5px; font-weight: 550; text-align: left;
+    padding: 8px 9px 8px 12px; border-radius: 8px; cursor: pointer; margin-bottom: 7px;
+    transition: background .18s, color .18s, padding-left .18s;
+  }
+  .settings-nav button::before {
+    content: ""; position: absolute; left: 0; top: 50%; width: 3px; height: 0; border-radius: 2px;
+    background: var(--accent); transform: translateY(-50%);
+    transition: height .22s cubic-bezier(.34,1.56,.64,1);
+  }
+  .settings-nav button .ic { flex: 0 0 16px; width: 16px; height: 16px; display: flex; align-items: center; justify-content: center; opacity: .8; transition: opacity .18s, transform .18s; }
+  .settings-nav button .count {
+    margin-left: auto; font-size: 10.5px; font-weight: 700; background: var(--card-2); color: var(--faint);
+    border-radius: 99px; padding: 1px 7px; font-variant-numeric: tabular-nums; transition: background .18s, color .18s;
+  }
+  .settings-nav button:hover { background: var(--card-2); color: var(--text); }
+  .settings-nav button.active { background: var(--card-2); color: var(--text); padding-left: 16px; }
+  .settings-nav button.active::before { height: 60%; }
+  .settings-nav button.active .ic { opacity: 1; transform: scale(1.05); }
+  .settings-nav button.active .count { background: var(--accent); color: var(--accent-fg); }
+  .settings-panel { flex: 1; padding: 18px 20px; min-width: 0; }
+  .settings-panel h3 { margin: 0 0 3px; font-size: 14.5px; font-weight: 650; }
+  .settings-panel .panel-desc { color: var(--faint); font-size: 11.5px; margin: 0 0 16px; }
+  .settings-pane { display: none; }
+  .settings-pane.active { display: block; animation: paneIn .22s ease both; }
+  @keyframes paneIn { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } }
+
+  @media (max-width: 640px) {
+    .settings-shell { flex-direction: column; }
+    .settings-nav { flex: none; display: flex; overflow-x: auto; border-right: 0; border-bottom: 1px solid var(--line); gap: 2px; }
+    .settings-nav button { width: auto; white-space: nowrap; margin-bottom: 0; }
+    .settings-nav button .count { margin-left: 6px; }
+  }
+
+  /* --- select --- */
+  .select-wrap { position: relative; }
+  select {
+    width: 100%; appearance: none; -webkit-appearance: none; background: var(--card-2); color: var(--text);
+    border: 1px solid var(--line); border-radius: 9px; padding: 8px 34px 8px 11px; font: inherit; cursor: pointer;
+    transition: border-color .15s, box-shadow .15s;
+  }
+  select:hover { border-color: #2e3a4c; }
+  select:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px rgba(77,143,234,.22); }
+  .select-wrap::after {
+    content: ""; position: absolute; right: 12px; top: 50%; width: 9px; height: 9px; pointer-events: none;
+    border-right: 1.6px solid var(--muted); border-bottom: 1.6px solid var(--muted);
+    transform: translateY(-70%) rotate(45deg); transition: transform .2s ease, border-color .2s ease;
+  }
+  .select-wrap:has(select:focus)::after { border-color: var(--accent); transform: translateY(-30%) rotate(225deg); }
+
+  input[type=text], input[type=number], input[type=password] {
+    width: 100%; padding: 8px 11px; border: 1px solid var(--line); border-radius: 9px;
+    background: var(--card-2); color: var(--text); font: inherit; transition: border-color .15s, box-shadow .15s;
+  }
+  input:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px rgba(77,143,234,.22); }
+  input::placeholder { color: var(--faint); }
+  input:disabled { opacity: .45; cursor: not-allowed; }
+  .row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  @media (max-width: 520px) { .row2 { grid-template-columns: 1fr; } }
+
+  /* --- плавно раскрывающиеся группы полей --- */
+  .collapsible { display: grid; grid-template-rows: 0fr; opacity: 0; transition: grid-template-rows .3s ease, opacity .22s ease; }
+  .collapsible.open { grid-template-rows: 1fr; opacity: 1; }
+  .collapsible > div { overflow: hidden; min-height: 0; padding-top: 13px; }
+
+  .filepick { position: relative; }
+  .filepick input[type=file] { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); border: 0; }
+  .filepick label.dropzone, .filepick > label {
+    display: flex; align-items: center; gap: 9px; padding: 8px 12px; margin: 0; border: 1px dashed var(--line);
+    border-radius: 9px; background: var(--card-2); cursor: pointer; font-weight: 500; color: var(--muted);
+    transition: border-color .15s, color .15s;
+  }
+  .filepick label.dropzone:hover, .filepick > label:hover { border-color: var(--accent); color: var(--text); }
+  .filepick input[type=file]:focus-visible + label { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(77,143,234,.22); }
+  .filepick svg { flex: 0 0 auto; opacity: .8; }
+  .filepick.has-file > label { border-style: solid; border-color: #2e3a4c; }
+
+  /* --- кастомный чекбокс --- */
+  .check { display: flex; align-items: flex-start; gap: 9px; cursor: pointer; font-weight: 400; margin: 0 0 11px; color: var(--text); font-size: 12.5px; user-select: none; }
+  .check input { position: absolute; width: 1px; height: 1px; opacity: 0; }
+  .check .box {
+    flex: 0 0 16px; width: 16px; height: 16px; margin-top: 1px; border-radius: 5px; border: 1.5px solid var(--line);
+    background: var(--card-2); position: relative; transition: background .18s, border-color .18s, transform .15s;
+  }
+  .check:hover .box { border-color: var(--accent); }
+  .check:active .box { transform: scale(.92); }
+  .check input:checked + .box { background: var(--accent); border-color: var(--accent); animation: boxPop .3s cubic-bezier(.34,1.56,.64,1); }
+  .check .box::after {
+    content: ""; position: absolute; left: 4.5px; top: .5px; width: 4px; height: 8.5px;
+    border: solid var(--accent-fg); border-width: 0 2px 2px 0;
+    transform: rotate(45deg) scale(0); opacity: 0; transform-origin: center;
+    transition: transform .26s cubic-bezier(.34,1.56,.64,1), opacity .15s;
+  }
+  .check input:checked + .box::after { transform: rotate(45deg) scale(1); opacity: 1; }
+  .check input:focus-visible + .box { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .check .txt .hint { margin-top: 1px; }
+  .check.last { margin-bottom: 2px; }
+  @keyframes boxPop { 0% { transform: scale(.8); } 55% { transform: scale(1.12); } 100% { transform: scale(1); } }
+
+  /* --- кнопки --- */
+  button, .btn {
+    display: inline-flex; align-items: center; gap: 6px; border: 0; border-radius: 9px; padding: 8px 15px;
+    font: inherit; font-weight: 600; font-size: 12.5px; cursor: pointer;
+    background: linear-gradient(180deg, var(--accent-hi), var(--accent)); color: var(--accent-fg);
+    text-decoration: none; transition: filter .15s, transform .05s;
+  }
+  button:hover, .btn:hover { filter: brightness(1.08); }
+  button:active, .btn:active { transform: translateY(1px); }
+  button:disabled { opacity: .55; cursor: wait; filter: none; }
+  button.ghost, .btn.ghost {
+    background: transparent; color: var(--faint); border: 1px solid var(--line); font-weight: 500;
+    padding: 6px 10px; font-size: 12px; box-shadow: none;
+  }
+  button.ghost:hover, .btn.ghost:hover { color: var(--text); border-color: #2e3a4c; filter: none; }
+  button.danger-arm { color: var(--err); border-color: rgba(255,107,107,.4); animation: armPulse 1.1s ease-in-out infinite; }
+  @keyframes armPulse { 0%, 100% { box-shadow: 0 0 0 0 rgba(255,107,107,.35); } 50% { box-shadow: 0 0 0 5px rgba(255,107,107,0); } }
+  button.secondary { background: var(--card-2); color: var(--text); border: 1px solid var(--line); box-shadow: none; }
+  button.secondary:hover { border-color: #2e3a4c; filter: none; }
+
+  /* --- сообщения --- */
+  .msg { padding: 9px 12px; border-radius: 9px; margin-bottom: 14px; font-size: 12.5px; line-height: 1.5; }
+  .msg.ok { background: var(--ok-bg); color: var(--ok); border: 1px solid rgba(61,220,151,.25); }
+  .msg.error { background: var(--err-bg); color: var(--err); border: 1px solid rgba(255,107,107,.25); }
+
+  .row { display: grid; grid-template-columns: 1fr 1fr; gap: 11px; }
+  details.opts { margin-top: 2px; }
+  details.opts > summary {
+    cursor: pointer; color: var(--muted); font-size: 12px; font-weight: 550; list-style: none;
+    display: flex; align-items: center; gap: 5px; padding: 4px 0;
+  }
+  details.opts > summary::-webkit-details-marker { display: none; }
+  details.opts > summary::before { content: "▸"; font-size: 10px; transition: transform .15s; }
+  details.opts[open] > summary::before { transform: rotate(90deg); }
+  details.opts .inner { padding: 10px 0 0 2px; }
+
+  /* --- пользователи --- */
+  .user-empty { border: 1px dashed var(--line); border-radius: 10px; padding: 26px 16px; text-align: center; color: var(--faint); font-size: 12.5px; }
+  .user-empty svg { opacity: .5; margin-bottom: 8px; }
+  .user-list { display: flex; flex-direction: column; gap: 8px; margin-bottom: 14px; }
+  .user-row {
+    display: flex; align-items: center; gap: 12px; padding: 10px 12px; background: var(--card-2);
+    border: 1px solid var(--line); border-radius: 10px; animation: rowIn .28s cubic-bezier(.34,1.1,.64,1) both;
+  }
+  @keyframes rowIn { from { opacity: 0; transform: translateY(-6px) scale(.98); } to { opacity: 1; transform: translateY(0) scale(1); } }
+  .user-avatar { flex: 0 0 32px; width: 32px; height: 32px; border-radius: 9px; background: linear-gradient(160deg, var(--accent-hi), var(--accent));
+    color: var(--accent-fg); display: flex; align-items: center; justify-content: center; font-weight: 750; font-size: 13px; }
+  .user-main { flex: 1; min-width: 0; }
+  .user-name { font-weight: 600; font-size: 13px; display: flex; align-items: center; gap: 7px; }
+  .user-name .tag-off { font-size: 10px; font-weight: 650; color: var(--faint); border: 1px solid var(--line); border-radius: 99px; padding: 1px 7px; text-transform: uppercase; letter-spacing: .04em; }
+  .user-name .tag-file { font-size: 10px; font-weight: 650; color: var(--accent-hi); border: 1px solid rgba(77,143,234,.35); border-radius: 99px; padding: 1px 7px; text-transform: uppercase; letter-spacing: .04em; }
+  .user-sessions { display: flex; gap: 5px; margin-top: 5px; }
+  .user-sessions .ic { width: 16px; height: 16px; opacity: .3; filter: grayscale(1); transition: opacity .15s, filter .15s; }
+  .user-sessions .ic.on { opacity: 1; filter: none; }
+  .user-actions { flex: 0 0 auto; display: flex; gap: 6px; }
+  .user-actions button { padding: 6px 9px; font-size: 11.5px; }
+
+  /* --- модалка добавления пользователя --- */
+  .modal-backdrop {
+    position: fixed; inset: 0; background: rgba(4,6,10,.65); backdrop-filter: blur(2px);
+    display: flex; align-items: center; justify-content: center; padding: 20px; z-index: 50;
+    opacity: 0; visibility: hidden; pointer-events: none;
+    transition: opacity .2s ease, visibility 0s linear .2s;
+  }
+  .modal-backdrop.show { opacity: 1; visibility: visible; pointer-events: auto; transition: opacity .2s ease, visibility 0s linear 0s; }
+  .modal {
+    width: 100%; max-width: 460px; max-height: calc(100vh - 40px); overflow-y: auto;
+    background: linear-gradient(180deg, var(--card), var(--bg-soft)); border: 1px solid var(--line);
+    border-radius: 14px; box-shadow: 0 20px 60px -12px rgba(0,0,0,.6); padding: 20px;
+    transform: translateY(10px) scale(.96); opacity: 0;
+    transition: transform .26s cubic-bezier(.34,1.56,.64,1), opacity .2s ease;
+  }
+  .modal-backdrop.show .modal { transform: translateY(0) scale(1); opacity: 1; }
+  .modal h3 { margin: 0 0 3px; font-size: 15px; font-weight: 650; }
+  .modal .panel-desc { color: var(--faint); font-size: 11.5px; margin: 0 0 16px; }
+  .session-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 6px; }
+  @media (max-width: 420px) { .session-grid { grid-template-columns: 1fr; } }
+  .session-pick {
+    display: flex; align-items: center; gap: 8px; padding: 8px 10px; border: 1.5px solid var(--line);
+    border-radius: 9px; background: var(--card-2); cursor: pointer; user-select: none;
+    transition: border-color .18s, background .18s, transform .12s;
+  }
+  .session-pick:hover { border-color: #2e3a4c; }
+  .session-pick:active { transform: scale(.97); }
+  .session-pick input { position: absolute; width: 1px; height: 1px; opacity: 0; }
+  .session-pick .ic {
+    width: 18px; height: 18px; flex: 0 0 auto; opacity: .5; filter: grayscale(.7); transform: scale(.85);
+    transition: opacity .2s, filter .2s, transform .22s cubic-bezier(.34,1.56,.64,1);
+  }
+  .session-pick input:checked ~ .ic { opacity: 1; filter: none; transform: scale(1); }
+  .session-pick input:checked ~ span.lbl { color: var(--text); }
+  .session-pick:has(input:checked) { border-color: var(--accent); background: rgba(77,143,234,.08); }
+  .session-pick .lbl { font-size: 12px; font-weight: 550; color: var(--muted); transition: color .18s; }
+  .session-links { display: flex; gap: 12px; margin: 8px 0 16px; }
+  .session-links a { font-size: 11.5px; font-weight: 600; cursor: pointer; text-decoration: none; }
+  .modal-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 18px; }
+  .field-error { color: var(--err); font-size: 11.5px; margin-top: 4px; display: none; }
+  .field-error.show { display: block; }
+  .field.invalid input, .field.invalid select { border-color: var(--err); }
+
+  .toast {
+    position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%) translateY(12px); opacity: 0;
+    background: var(--card-2); border: 1px solid var(--line); color: var(--text); padding: 10px 16px;
+    border-radius: 10px; box-shadow: var(--shadow); font-size: 12.5px; z-index: 60; pointer-events: none;
+    transition: opacity .2s, transform .2s; display: flex; align-items: center; gap: 8px;
+  }
+  .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+  .toast .dot { width: 6px; height: 6px; border-radius: 99px; background: var(--warn); flex: 0 0 auto; }
+
+  .final-actions { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-top: 4px; }
+
+  .footer { text-align: center; color: var(--faint); font-size: 11.5px; margin-top: 22px; }
+  .footer a { color: var(--faint); text-decoration: underline; text-underline-offset: 2px; transition: color .15s; }
+  .footer a:hover { color: var(--accent-hi); }
+
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { animation-duration: .001ms !important; animation-iteration-count: 1 !important; transition-duration: .001ms !important; }
+  }
+</style>
+</head>
+<body>
+<main>
+  <div class="topbar">
+    <div class="brand-block">
+      <div class="brand">
+        <img src="{{ url_for('static', filename='icon.png') }}" alt="">
+        <h1>Aspia Configurator</h1>
+      </div>
+      <div class="brand-sub">Для Aspia Host 3.X</div>
+    </div>
+    <div class="counter" title="Сколько пакетов собрано через этот сервис">
+      <span class="counter-icon">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>
+      </span>
+      <span>
+        <span class="counter-num">{{ build_count }}</span>
+        <span class="counter-label">пакетов собрано</span>
+      </span>
+    </div>
+  </div>
+
+  {% with messages = get_flashed_messages(with_categories=true) %}
+    {% for cat, m in messages %}<div class="msg {{ cat }}">{{ m }}</div>{% endfor %}
+  {% endwith %}
+
+  <form method="post" action="{{ url_for('build') }}" enctype="multipart/form-data" id="build-form">
+    <input type="hidden" name="users_json" id="users-json-input" value="[]">
+
+    <section class="card">
+      <h2>Исходный пакет</h2>
+      <input type="hidden" name="package_source" id="package-source-input" value="upload">
+      <div class="mode-switch mode-switch-sm" role="tablist">
+        <div class="pill" id="pkg-pill"></div>
+        <button type="button" id="pkgsrc-upload" class="active" onclick="setPkgSource('upload')">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+          Свой файл
+        </button>
+        <button type="button" id="pkgsrc-release" onclick="setPkgSource('release')">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18c-4.51 2-5-2-7-2m14 4v-3.87a3.37 3.37 0 0 0-.94-2.61c3.14-.35 6.44-1.54 6.44-7A5.44 5.44 0 0 0 20 6.77 5.07 5.07 0 0 0 19.91 3S18.73 2.65 16 4.48a13.38 13.38 0 0 0-7 0C6.27 2.65 5.09 3 5.09 3A5.07 5.07 0 0 0 5 6.77a5.44 5.44 0 0 0-1.5 3.78c0 5.42 3.3 6.61 6.44 7A3.37 3.37 0 0 0 9 20.13V24"/></svg>
+          С GitHub (3.x)
+        </button>
+      </div>
+
+      <div class="field" id="pkg-upload-panel" style="margin-bottom:0">
+        <label for="package">Aspia Host (.msi)</label>
+        <div class="filepick" id="packagepick">
+          <input type="file" name="package" id="package" accept=".msi" required>
+          <label for="package">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+            <span id="package-label">Выберите .msi</span>
+          </label>
+        </div>
+      </div>
+
+      <div class="field" id="pkg-release-panel" style="margin-bottom:0; display:none">
+        <label for="release-version">Версия Aspia Host (Windows x64)</label>
+        <div class="select-wrap"><select id="release-version" name="release_version"></select></div>
+        <p class="hint" id="release-hint">Загрузка списка версий…</p>
+      </div>
+    </section>
+
+    <!-- ===== конфигурация: импорт + форма ===== -->
+    <section id="panel-form" class="card" style="padding:16px 16px 18px">
+      <h2 style="margin-bottom:4px">Конфигурация</h2>
+      <p class="hint" style="margin:0 0 14px">Поля уже стоят такими, какими они будут в программе после обычной установки.
+        В файл настроек попадёт только то, что вы измените здесь, — остальное трогать незачем, оно и так верное.</p>
+
+      <div class="field" id="import-panel">
+        <label for="import-file">Импортировать существующий файл настроек (необязательно)</label>
+        <div class="filepick" id="importpick">
+          <input type="file" id="import-file" accept=".json">
+          <label for="import-file">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+            <span id="import-label">Выбрать файл — поля заполнятся автоматически</span>
+          </label>
+        </div>
+        <p class="hint" style="margin-top:6px">Пароли пользователей и пароль защиты настроек восстановить нельзя — из файла они
+          переносятся как есть, без изменений, пока вы явно их не смените.</p>
+      </div>
+
+      <div class="settings-shell">
+        <nav class="settings-nav" id="settings-nav"></nav>
+        <div class="settings-panel">
+
+          <div class="settings-pane active" data-pane="general">
+            <h3>Общие</h3>
+            <p class="panel-desc">Сетевой порт и захват экрана.</p>
+            <div class="row2">
+              <div class="field">
+                <label for="f-port">Входящий порт</label>
+                <input type="number" id="f-port" name="port" value="8050" min="1" max="65535">
+              </div>
+              <div class="field">
+                <label for="f-capturer">Предпочитаемый тип захвата видео</label>
+                <div class="select-wrap"><select id="f-capturer" name="video_capturer">
+                  <option value="0">По умолчанию</option><option value="3">DXGI</option><option value="2">GDI</option>
+                </select></div>
+              </div>
+            </div>
+            <label class="check last"><input type="checkbox" name="hardware_encoding" value="1" checked><span class="box"></span><span class="txt">Разрешить аппаратное кодирование видео</span></label>
+          </div>
+
+          <div class="settings-pane" data-pane="updates">
+            <h3>Обновления</h3>
+            <p class="panel-desc">Как хост проверяет новые версии.</p>
+            <label class="check"><input type="checkbox" name="auto_update" value="1" checked onchange="toggleGroup('autoupdate',this.checked)"><span class="box"></span><span class="txt">Автоматически проверять и устанавливать обновления</span></label>
+            <div class="collapsible open" id="grp-autoupdate"><div class="row2">
+              <div class="field">
+                <label for="f-freq">Проверять обновления</label>
+                <div class="select-wrap"><select id="f-freq" name="check_frequency_days">
+                  <option value="1">Раз в день</option><option value="7" selected>Раз в неделю</option><option value="30">Раз в месяц</option>
+                </select></div>
+              </div>
+              <div class="field">
+                <label for="f-channel">Канал обновлений</label>
+                <div class="select-wrap"><select id="f-channel" name="update_channel">
+                  <option value="stable" selected>Стабильный</option><option value="beta">Бета</option><option value="alpha">Альфа</option>
+                </select></div>
+              </div>
+            </div></div>
+          </div>
+
+          <div class="settings-pane" data-pane="confirm">
+            <h3>Подтверждение подключения</h3>
+            <p class="panel-desc">Что видит пользователь за компьютером при входящем подключении. По умолчанию в программе выключено.</p>
+            <label class="check"><input type="checkbox" name="confirm_require" value="1" onchange="toggleGroup('confirm',this.checked)"><span class="box"></span><span class="txt">Требовать подтверждение при подключении к компьютеру</span></label>
+            <div class="collapsible" id="grp-confirm"><div class="row2">
+              <div class="field">
+                <label for="f-autoconf">Автоматическое подтверждение через</label>
+                <div class="select-wrap"><select id="f-autoconf" name="confirm_auto_interval">
+                  <option value="0" selected>Никогда</option><option value="15">15 секунд</option><option value="30">30 секунд</option><option value="45">45 секунд</option><option value="60">60 секунд</option>
+                </select></div>
+              </div>
+              <div class="field">
+                <label for="f-nouser">Если нет активного пользователя</label>
+                <div class="select-wrap"><select id="f-nouser" name="no_user_action">
+                  <option value="0" selected>Принимать подключение</option><option value="1">Отклонять подключение</option>
+                </select></div>
+              </div>
+            </div></div>
+          </div>
+
+          <div class="settings-pane" data-pane="otp">
+            <h3>Одноразовый пароль</h3>
+            <p class="panel-desc">Временный пароль для подключения без учётной записи. По умолчанию в программе включён.</p>
+            <label class="check"><input type="checkbox" name="otp_enabled" value="1" checked onchange="toggleGroup('otp',this.checked)"><span class="box"></span><span class="txt">Включить одноразовый пароль</span></label>
+            <div class="collapsible open" id="grp-otp"><div class="row2">
+              <div class="field">
+                <label for="f-otpexp">Менять пароль</label>
+                <div class="select-wrap"><select id="f-otpexp" name="otp_expire_min">
+                  <option value="0">При перезагрузке</option><option value="5" selected>Каждые 5 минут</option><option value="30">Каждые 30 минут</option><option value="60">Каждый 1 час</option><option value="360">Каждые 6 часов</option><option value="720">Каждые 12 часов</option>
+                </select></div>
+              </div>
+              <div class="field">
+                <label for="f-otpchars">Символы</label>
+                <div class="select-wrap"><select id="f-otpchars" name="otp_characters">
+                  <option value="7" selected>Буквы и цифры</option><option value="3">Буквы</option><option value="4">Цифры</option>
+                </select></div>
+              </div>
+              <div class="field">
+                <label for="f-otplen">Количество символов</label>
+                <input type="number" id="f-otplen" name="otp_length" value="8" min="8" max="16">
+              </div>
+            </div></div>
+          </div>
+
+          <div class="settings-pane" data-pane="router">
+            <h3>Маршрутизатор</h3>
+            <p class="panel-desc">Нужен для подключения без прямого доступа (обход NAT). По умолчанию в программе выключен.</p>
+            <label class="check"><input type="checkbox" name="router_enabled" value="1" onchange="toggleGroup('router',this.checked)"><span class="box"></span><span class="txt">Включить использование маршрутизатора</span></label>
+            <div class="collapsible" id="grp-router"><div>
+              <div class="field">
+                <label for="f-raddr">Адрес</label>
+                <input type="text" id="f-raddr" name="router_address" placeholder="remote.example.com или remote.example.com:8061">
+              </div>
+              <div class="field">
+                <label for="f-rkey">Публичный ключ</label>
+                <input type="text" id="f-rkey" name="router_public_key" placeholder="hex-строка ключа маршрутизатора">
+                <div class="hint">Копируется из панели вашего маршрутизатора — сервис его не генерирует.</div>
+              </div>
+            </div></div>
+          </div>
+
+          <div class="settings-pane" data-pane="security">
+            <h3>Защита настроек</h3>
+            <p class="panel-desc">Локальный пароль на изменение настроек хоста — отдельно от пользователей ниже.</p>
+            <label class="check"><input type="checkbox" name="security_enabled" value="1" id="chk-security" onchange="toggleGroup('security',this.checked)"><span class="box"></span><span class="txt">Включить защиту настроек паролем</span></label>
+            <div class="collapsible" id="grp-security"><div>
+              <div class="field" id="fld-security-keep" style="display:none">
+                <label class="check last"><input type="checkbox" id="chk-security-keep" checked onchange="toggleSecurityKeep(this.checked)"><span class="box"></span>
+                  <span class="txt">Пароль из файла — не менять<div class="hint">Хеш пароля будет перенесён как есть, без изменений</div></span></label>
+              </div>
+              <div class="row2" id="security-pass-fields">
+                <div class="field"><label for="f-secpass">Пароль</label><input type="password" id="f-secpass" name="security_password" placeholder="Минимум 8 символов" autocomplete="new-password"></div>
+                <div class="field"><label for="f-secpass2">Пароль (повторить)</label><input type="password" id="f-secpass2" name="security_password2" placeholder="Повторите пароль" autocomplete="new-password"></div>
+              </div>
+            </div></div>
+            <input type="hidden" name="security_from_file" id="security-from-file-input" value="0">
+            <input type="hidden" name="security_hash" id="security-hash-input" value="">
+            <input type="hidden" name="security_hash_salt" id="security-hash-salt-input" value="">
+          </div>
+
+          <div class="settings-pane" data-pane="misc">
+            <h3>Разное</h3>
+            <label class="check last"><input type="checkbox" name="disable_shutdown" value="1"><span class="box"></span><span class="txt">Запретить закрытие Aspia</span></label>
+          </div>
+
+          <div class="settings-pane" data-pane="users">
+            <h3>Пользователи</h3>
+            <p class="panel-desc">Кто и с какими правами сможет подключаться к этому компьютеру. Пароли уходят на сервер
+              только на время сборки (для вычисления SRP-ключа) и нигде не сохраняются — как и всё остальное.</p>
+
+            <div id="user-empty" class="user-empty">
+              <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+              <div>Пользователей пока нет — добавьте хотя бы одного, иначе подключиться будет некому.</div>
+            </div>
+            <div id="user-list" class="user-list"></div>
+
+            <button type="button" class="secondary" onclick="openUserModal()">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+              Добавить пользователя
+            </button>
+          </div>
+
+        </div>
+      </div>
+    </section>
+
+    <section class="card">
+      <details class="opts">
+        <summary>Дополнительно</summary>
+        <div class="inner">
+          <label class="check"><input type="checkbox" name="delete_after" value="1" checked><span class="box"></span>
+            <span class="txt">Удалять файл штатным RemoveFile<div class="hint">При удалении программы и перед установкой новой копии поверх старой</div></span></label>
+          <label class="check last"><input type="checkbox" name="new_package_code" value="1"><span class="box"></span>
+            <span class="txt">Сменить PackageCode<div class="hint">Нужно, только если такой же пакет уже установлен и Windows путает их</div></span></label>
+        </div>
+      </details>
+    </section>
+
+    <section class="card">
+      <div class="final-actions">
+        <button type="submit" id="go">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v14M6 10l6 6 6-6M4 20h16"/></svg>
+          Собрать пакет
+        </button>
+        <span class="hint" style="margin:0" id="submit-hint">Соберёт файл настроек по этим полям (пароли новых или изменённых пользователей уйдут на сервер только для расчёта, без сохранения), вошьёт в выбранный пакет и сразу предложит его скачать.</span>
+      </div>
+    </section>
+  </form>
+
+  <footer class="footer">w/ ♥️ · <a href="https://github.com/bolgov0zero/Aspia-Configurator" target="_blank" rel="noopener">GitHub</a></footer>
+</main>
+
+<!-- ===== модалка: добавить/изменить пользователя ===== -->
+<div class="modal-backdrop" id="modal-backdrop" onclick="if(event.target===this) closeUserModal()">
+  <div class="modal" role="dialog" aria-modal="true">
+    <h3 id="modal-title">Новый пользователь</h3>
+    <p class="panel-desc">Права можно будет изменить, переоткрыв это окно из списка.</p>
+
+    <div class="field" id="fld-name">
+      <label for="u-name">Имя пользователя</label>
+      <input type="text" id="u-name" placeholder="admin" autocomplete="off">
+      <div class="field-error" id="err-name">Только буквы, цифры и символы _ - . @, не может состоять только из цифр.</div>
+    </div>
+    <div class="field" id="fld-keep-pass" style="display:none">
+      <label class="check last"><input type="checkbox" id="u-keep-pass" checked onchange="toggleKeepPassword(this.checked)"><span class="box"></span>
+        <span class="txt">Пароль из файла — не менять<div class="hint">Существующая SRP-запись будет перенесена как есть, без пароля</div></span></label>
+    </div>
+    <div class="row2" id="pass-fields">
+      <div class="field" id="fld-pass">
+        <label for="u-pass">Пароль</label>
+        <input type="password" id="u-pass" placeholder="Минимум 8 символов" autocomplete="new-password">
+      </div>
+      <div class="field" id="fld-pass2">
+        <label for="u-pass2">Пароль (повторить)</label>
+        <input type="password" id="u-pass2" placeholder="Повторите пароль" autocomplete="new-password">
+        <div class="field-error" id="err-pass">Пароли не совпадают или короче 8 символов.</div>
+      </div>
+    </div>
+
+    <label>Разрешённые типы сессий</label>
+    <div class="session-grid" id="session-grid"></div>
+    <div class="session-links">
+      <a onclick="setAllSessions(true)">Отметить все</a>
+      <a onclick="setAllSessions(false)">Снять все</a>
+    </div>
+    <div class="field-error" id="err-sessions">Нужно выбрать хотя бы один тип сессии.</div>
+
+    <label class="check last"><input type="checkbox" id="u-enabled" checked><span class="box"></span><span class="txt">Учётная запись активна</span></label>
+
+    <div class="modal-actions">
+      <button type="button" class="ghost" onclick="closeUserModal()">Отмена</button>
+      <button type="button" id="u-save-btn" onclick="saveUser()">Добавить</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"><span class="dot"></span><span id="toast-text"></span></div>
+
+<script>
+  var SECTIONS = [
+    { id: 'general', label: 'Общие',
+      icon: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>' },
+    { id: 'updates', label: 'Обновления',
+      icon: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 4v6h-6"/><path d="M1 20v-6h6"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>' },
+    { id: 'confirm', label: 'Подтверждение',
+      icon: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg>' },
+    { id: 'otp', label: 'Одноразовый пароль',
+      icon: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>' },
+    { id: 'router', label: 'Маршрутизатор',
+      icon: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="14" width="20" height="8" rx="2"/><path d="M6.01 18H6M10.01 18H10"/><path d="M15 10V6a2 2 0 0 0-2-2H8.5L7 2"/><path d="M9 14v-3.5A2.5 2.5 0 0 1 11.5 8H13"/></svg>' },
+    { id: 'security', label: 'Защита настроек',
+      icon: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 9.9-1"/></svg>' },
+    { id: 'misc', label: 'Разное',
+      icon: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/></svg>' },
+    { id: 'users', label: 'Пользователи',
+      icon: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>' }
+  ];
+
+  // иконки прав — те же, что в самом Aspia Host
+  var SESSION_TYPES = [
+    { bit: 1,  label: 'Рабочий стол', svg: '<svg viewBox="0 0 48 48" xmlns="http://www.w3.org/2000/svg"><path fill="#546E7A" d="M8 10H44V36H8z"/><path fill="#BBDEFB" d="M10 12H42V33H10z"/><path fill="#455A64" d="M23 36H29V39H23zM35 39c-2 0-16 0-18 0s-2 2-2 2v1h22v-1C37 41 37 39 35 39z"/><path fill="#3F51B5" d="M4 4H22V44H4z"/><path fill="#9FA8DA" d="M6 6H20V10H6zM6 12H20V14H6zM6 16H20V18H6zM6 20H20V22H6zM6 24H20V26H6z"/><path fill="#CDDC39" d="M13 36A2 2 0 1 0 13 40A2 2 0 1 0 13 36Z"/></svg>' },
+    { bit: 4,  label: 'Передача файлов', svg: '<svg viewBox="0 0 48 48" xmlns="http://www.w3.org/2000/svg"><path fill="#ffa000" d="M40 11.24H22l-4-4H8c-2.2 0-4 1.8-4 4v8h40v-4c0-2.2-1.8-4-4-4z"/><path fill="#ffca28" d="M40 11.24H8c-2.2 0-4 1.8-4 4v20c0 2.2 1.8 4 4 4h32c2.2 0 4-1.8 4-4v-20c0-2.2-1.8-4-4-4z"/><path fill="#39a9f4" d="M10 24.24v17h8v-9h12v9h8v-17z"/></svg>' },
+    { bit: 8,  label: 'Информация о системе', svg: '<svg viewBox="0 0 48 48" xmlns="http://www.w3.org/2000/svg"><path fill="#546E7A" d="M6 8H42V34H6z"/><path fill="#8BC34A" d="M8 10H40V31H8z"/><path fill="#455A64" d="M21 34H27V37H21zM33 37c-2 0-16 0-18 0s-2 2-2 2v1h22v-1C35 39 35 37 33 37z"/><path fill="#F1F8E9" d="M27.873 15.05L22.182 20.75 19.455 18.03 17.332 20.158 22.186 25 30 17.173z"/></svg>' },
+    { bit: 16, label: 'Чат', svg: '<svg viewBox="0 0 48 48" xmlns="http://www.w3.org/2000/svg"><path fill="#448AFF" d="M24 4C13.5 4 5 12.1 5 22c0 5.2 2.3 9.8 6 13.1V44l7.8-4.7c1.6.4 3.4.7 5.2.7 10.5 0 19-8.1 19-18C43 12.1 34.5 4 24 4z"/><path fill="#e3f2fd" d="M15.27 19.65a2 2 0 1 0 0 4 2 2 0 1 0 0-4zm9 0a2 2 0 1 0 0 4 2 2 0 1 0 0-4zm9 0a2 2 0 1 0 0 4 2 2 0 1 0 0-4z"/></svg>' },
+    { bit: 32, label: 'Терминал', svg: '<svg viewBox="-1 -1 32 32" xmlns="http://www.w3.org/2000/svg"><rect x="2.5" y="3.5" fill="#424E5C" width="25" height="23"/><path fill="#AFC5D8" d="M27 4v22H3V4H27 M28 3H2v24h26V3L28 3z"/><rect x="2" y="3" fill="#AFC5D8" width="26" height="4"/><rect x="14" y="20" fill="#BAE0BD" width="8" height="1"/><polygon fill="#BAE0BD" points="8.5,20.4 7.8,19.6 11.4,16.5 7.8,13.4 8.5,12.6 12.9,16.5"/></svg>' }
+  ];
+
+  var users = [];       // { name, password, sessions(bitmask), enabled, srpSalt, srpVerifier, fromFile }
+  var editIndex = -1;
+  var removeArmed = -1;
+  var securityImported = null;   // { hash, salt } — пароль защиты настроек из импортированного файла
+
+  // ровно DB_DEFAULTS/SYSTEM_DEFAULTS из app/aspia_settings.py, в единицах формы (не мс)
+  var FORM_DEFAULTS = {
+    port: 8050, video_capturer: 0, hardware_encoding: true,
+    auto_update: true, check_frequency_days: 7, update_channel: 'stable',
+    confirm_require: false, confirm_auto_interval: 0, no_user_action: 0,
+    otp_enabled: true, otp_expire_min: 5, otp_characters: 7, otp_length: 8,
+    router_enabled: false, router_address: '', router_public_key: '',
+    disable_shutdown: false
+  };
+
+  function el(sel) { return document.querySelector(sel); }
+  function toast(msg) {
+    el('#toast-text').textContent = msg;
+    var t = el('#toast'); t.classList.add('show');
+    clearTimeout(toast._h); toast._h = setTimeout(function () { t.classList.remove('show'); }, 2600);
+  }
+
+  var releasesLoaded = false;
+  function setPkgSource(m) {
+    var isUpload = m === 'upload';
+    el('#pkgsrc-upload').classList.toggle('active', isUpload);
+    el('#pkgsrc-release').classList.toggle('active', !isUpload);
+    el('#pkg-pill').style.transform = isUpload ? 'translateX(0)' : 'translateX(100%)';
+    el('#pkg-upload-panel').style.display = isUpload ? '' : 'none';
+    el('#pkg-release-panel').style.display = isUpload ? 'none' : '';
+    el('#package-source-input').value = m;
+    el('#package').required = isUpload;
+    el('#release-version').required = !isUpload;
+    if (!isUpload && !releasesLoaded) loadReleases();
+  }
+
+  function loadReleases() {
+    var sel = el('#release-version'), hint = el('#release-hint');
+    fetch('{{ url_for("releases") }}', { cache: 'no-store' })
+      .then(function (r) { return r.ok ? r.json() : Promise.reject(); })
+      .then(function (data) {
+        if (!data.releases || !data.releases.length) {
+          hint.textContent = 'Версии 3.x.x не найдены на GitHub — загрузите файл вручную.';
+          return;
+        }
+        releasesLoaded = true;
+        sel.innerHTML = data.releases.map(function (r) {
+          return '<option value="' + r.version + '">' + r.version + '</option>';
+        }).join('');
+        hint.textContent = 'Список версий с GitHub, самая новая — первой.';
+      })
+      .catch(function () {
+        hint.textContent = 'Не удалось получить список версий с GitHub — загрузите файл вручную.';
+      });
+  }
+
+  function buildNav() {
+    var nav = el('#settings-nav');
+    nav.innerHTML = SECTIONS.map(function (s) {
+      var countBadge = s.id === 'users' ? '<span class="count" id="nav-count-users">0</span>' : '';
+      return '<button type="button" data-pane="' + s.id + '" onclick="showPane(\'' + s.id + '\')" class="' + (s.id === 'general' ? 'active' : '') + '">' +
+             '<span class="ic">' + s.icon + '</span><span>' + s.label + '</span>' + countBadge + '</button>';
+    }).join('');
+  }
+  function showPane(id) {
+    document.querySelectorAll('.settings-nav button').forEach(function (b) { b.classList.toggle('active', b.dataset.pane === id); });
+    document.querySelectorAll('.settings-pane').forEach(function (p) { p.classList.toggle('active', p.dataset.pane === id); });
+  }
+  function toggleGroup(name, on) {
+    var g = el('#grp-' + name);
+    if (g) g.classList.toggle('open', on);
+  }
+
+  function setCheckbox(name, val) {
+    var input = document.querySelector('input[type=checkbox][name="' + name + '"]');
+    if (input) input.checked = !!val;
+  }
+
+  function toggleSecurityKeep(keep) {
+    el('#security-pass-fields').style.display = keep ? 'none' : '';
+    el('#security-from-file-input').value = keep ? '1' : '0';
+    el('#security-hash-input').value = (keep && securityImported) ? securityImported.hash : '';
+    el('#security-hash-salt-input').value = (keep && securityImported) ? securityImported.salt : '';
+  }
+
+  function resetFormToDefaults() {
+    var d = FORM_DEFAULTS;
+    el('#f-port').value = d.port;
+    el('#f-capturer').value = String(d.video_capturer);
+    setCheckbox('hardware_encoding', d.hardware_encoding);
+    setCheckbox('auto_update', d.auto_update); toggleGroup('autoupdate', d.auto_update);
+    el('#f-freq').value = String(d.check_frequency_days);
+    el('#f-channel').value = d.update_channel;
+    setCheckbox('confirm_require', d.confirm_require); toggleGroup('confirm', d.confirm_require);
+    el('#f-autoconf').value = String(d.confirm_auto_interval);
+    el('#f-nouser').value = String(d.no_user_action);
+    setCheckbox('otp_enabled', d.otp_enabled); toggleGroup('otp', d.otp_enabled);
+    el('#f-otpexp').value = String(d.otp_expire_min);
+    el('#f-otpchars').value = String(d.otp_characters);
+    el('#f-otplen').value = d.otp_length;
+    setCheckbox('router_enabled', d.router_enabled); toggleGroup('router', d.router_enabled);
+    el('#f-raddr').value = d.router_address;
+    el('#f-rkey').value = d.router_public_key;
+    setCheckbox('disable_shutdown', d.disable_shutdown);
+    el('#chk-security').checked = false; toggleGroup('security', false);
+    securityImported = null;
+    el('#fld-security-keep').style.display = 'none';
+    toggleSecurityKeep(false);
+    users = [];
+  }
+
+  function applyImportedSettings(json) {
+    resetFormToDefaults();
+    var db = (json && json.database) || {};
+    var sys = (json && json.system) || {};
+
+    if ('tcp_port' in db) el('#f-port').value = db.tcp_port;
+    if ('preferred_video_capturer' in sys) el('#f-capturer').value = String(sys.preferred_video_capturer);
+    if ('hardware_video_encoding_enabled' in sys) setCheckbox('hardware_encoding', sys.hardware_video_encoding_enabled);
+    if ('auto_update_enabled' in sys) { setCheckbox('auto_update', sys.auto_update_enabled); toggleGroup('autoupdate', sys.auto_update_enabled); }
+    if ('update_check_frequency' in sys) el('#f-freq').value = String(sys.update_check_frequency);
+    if ('update_channel' in sys) el('#f-channel').value = sys.update_channel;
+    if ('connect_confirmation' in db) { setCheckbox('confirm_require', db.connect_confirmation); toggleGroup('confirm', db.connect_confirmation); }
+    if ('auto_confirmation_interval' in db) el('#f-autoconf').value = String(Math.round(db.auto_confirmation_interval / 1000));
+    if ('no_user_action' in db) el('#f-nouser').value = String(db.no_user_action);
+    if ('one_time_password' in db) { setCheckbox('otp_enabled', db.one_time_password); toggleGroup('otp', db.one_time_password); }
+    if ('one_time_password_expire' in db) el('#f-otpexp').value = String(Math.round(db.one_time_password_expire / 60000));
+    if ('one_time_password_characters' in db) el('#f-otpchars').value = String(db.one_time_password_characters);
+    if ('one_time_password_length' in db) el('#f-otplen').value = db.one_time_password_length;
+    if ('router_enabled' in db) { setCheckbox('router_enabled', db.router_enabled); toggleGroup('router', db.router_enabled); }
+    if ('router_address' in db) el('#f-raddr').value = db.router_address || '';
+    if ('router_public_key' in db) el('#f-rkey').value = db.router_public_key || '';
+    if ('application_shutdown_disabled' in sys) setCheckbox('disable_shutdown', sys.application_shutdown_disabled);
+
+    if (db.password_hash && db.password_hash_salt) {
+      securityImported = { hash: db.password_hash, salt: db.password_hash_salt };
+      el('#chk-security').checked = true; toggleGroup('security', true);
+      el('#fld-security-keep').style.display = '';
+      el('#chk-security-keep').checked = true;
+      toggleSecurityKeep(true);
+    }
+
+    users = (Array.isArray(db.users) ? db.users : []).map(function (u) {
+      return {
+        name: String(u.name || ''),
+        password: '',
+        sessions: Number(u.sessions) || 0,
+        enabled: u.flags !== 0,
+        srpSalt: String(u.salt || ''),
+        srpVerifier: String(u.verifier || ''),
+        fromFile: true
+      };
+    });
+    renderUsers();
+    showPane('general');
+  }
+
+  function importSettingsFile(file) {
+    var reader = new FileReader();
+    reader.onload = function () {
+      var json;
+      try { json = JSON.parse(reader.result); }
+      catch (e) { toast('Не удалось прочитать файл — это точно JSON настроек?'); return; }
+      applyImportedSettings(json);
+      toast('Настройки из файла загружены в форму');
+    };
+    reader.onerror = function () { toast('Не удалось прочитать файл'); };
+    reader.readAsText(file);
+  }
+
+  function buildSessionGrid() {
+    el('#session-grid').innerHTML = SESSION_TYPES.map(function (s, i) {
+      return '<label class="session-pick"><input type="checkbox" data-bit="' + s.bit + '" id="sess-' + i + '">' +
+             '<span class="ic">' + s.svg + '</span><span class="lbl">' + s.label + '</span></label>';
+    }).join('');
+  }
+  function setAllSessions(v) { document.querySelectorAll('#session-grid input').forEach(function (c) { c.checked = v; }); }
+
+  function toggleKeepPassword(keep) {
+    el('#pass-fields').style.display = keep ? 'none' : '';
+  }
+
+  function openUserModal(idx) {
+    editIndex = (typeof idx === 'number') ? idx : -1;
+    var u = editIndex >= 0 ? users[editIndex] : null;
+    var isFromFile = !!(u && u.fromFile && u.srpSalt && u.srpVerifier);
+    el('#u-name').value = u ? u.name : '';
+    el('#u-pass').value = ''; el('#u-pass2').value = '';
+    el('#u-enabled').checked = u ? u.enabled : true;
+    document.querySelectorAll('#session-grid input').forEach(function (c) {
+      c.checked = u ? !!(u.sessions & Number(c.dataset.bit)) : true;
+    });
+    el('#fld-keep-pass').style.display = isFromFile ? '' : 'none';
+    el('#u-keep-pass').checked = isFromFile;
+    toggleKeepPassword(isFromFile);
+    el('#u-save-btn').textContent = u ? 'Сохранить' : 'Добавить';
+    ['#fld-name', '#fld-pass2'].forEach(function (s) { el(s).classList.remove('invalid'); });
+    ['#err-name', '#err-pass', '#err-sessions'].forEach(function (s) { el(s).classList.remove('show'); });
+    el('#modal-title').textContent = u ? 'Изменить пользователя' : 'Новый пользователь';
+    el('#modal-backdrop').classList.add('show');
+    setTimeout(function () { el('#u-name').focus(); }, 80);
+  }
+  function closeUserModal() { el('#modal-backdrop').classList.remove('show'); }
+
+  function saveUser() {
+    var name = el('#u-name').value.trim();
+    var pass = el('#u-pass').value, pass2 = el('#u-pass2').value;
+    var editing = editIndex >= 0;
+    var existing = editing ? users[editIndex] : null;
+    var keepPass = !!(existing && existing.fromFile && existing.srpSalt && existing.srpVerifier && el('#u-keep-pass').checked);
+    var nameOk = /^#?[A-Za-z0-9._@-]+$/.test(name) && !/^#?[0-9]+$/.test(name);
+
+    el('#fld-name').classList.toggle('invalid', !nameOk);
+    el('#err-name').classList.toggle('show', !nameOk);
+    var dupOk = users.every(function (u, i) { return i === editIndex || u.name.toLowerCase() !== name.toLowerCase(); });
+    if (nameOk && !dupOk) {
+      el('#fld-name').classList.add('invalid');
+      el('#err-name').textContent = 'Такое имя уже есть в списке.';
+      el('#err-name').classList.add('show');
+      nameOk = false;
+    } else if (nameOk) {
+      el('#err-name').textContent = 'Только буквы, цифры и символы _ - . @, не может состоять только из цифр.';
+    }
+
+    // пароль обязателен, только если это новый пользователь или пароль сознательно меняют —
+    // у нетронутого импортированного пользователя SRP-запись просто переносится из файла
+    var passOk = keepPass || (pass.length >= 8 && pass.length <= 64 && pass === pass2);
+    el('#fld-pass2').classList.toggle('invalid', !passOk);
+    el('#err-pass').classList.toggle('show', !passOk);
+
+    var sessions = 0;
+    document.querySelectorAll('#session-grid input:checked').forEach(function (c) { sessions |= Number(c.dataset.bit); });
+    var sessionsOk = sessions !== 0;
+    el('#err-sessions').classList.toggle('show', !sessionsOk);
+
+    if (!nameOk || !passOk || !sessionsOk) return;
+
+    var rec = keepPass
+      ? { name: name, password: '', srpSalt: existing.srpSalt, srpVerifier: existing.srpVerifier, fromFile: true,
+          sessions: sessions, enabled: el('#u-enabled').checked }
+      : { name: name, password: pass, fromFile: false, sessions: sessions, enabled: el('#u-enabled').checked };
+    if (editing) users[editIndex] = rec; else users.push(rec);
+
+    closeUserModal();
+    renderUsers();
+    toast(editing ? 'Пользователь «' + name + '» обновлён' : 'Пользователь «' + name + '» добавлен');
+  }
+
+  function armRemove(i) {
+    if (removeArmed === i) { users.splice(i, 1); removeArmed = -1; renderUsers(); toast('Пользователь удалён'); return; }
+    removeArmed = i; renderUsers();
+    setTimeout(function () { if (removeArmed === i) { removeArmed = -1; renderUsers(); } }, 3000);
+  }
+
+  function renderUsers() {
+    el('#user-empty').style.display = users.length ? 'none' : '';
+    el('#nav-count-users').textContent = users.length;
+    el('#users-json-input').value = JSON.stringify(users);
+    el('#user-list').innerHTML = users.map(function (u, i) {
+      var initial = u.name.replace('#', '').charAt(0).toUpperCase() || '?';
+      var icons = SESSION_TYPES.map(function (s) {
+        return '<span class="ic ' + ((u.sessions & s.bit) ? 'on' : '') + '" title="' + s.label + '">' + s.svg + '</span>';
+      }).join('');
+      var removing = removeArmed === i;
+      var fromFileBadge = (u.fromFile && u.srpSalt && u.srpVerifier) ? '<span class="tag-file">пароль из файла</span>' : '';
+      return '<div class="user-row">' +
+        '<div class="user-avatar">' + initial + '</div>' +
+        '<div class="user-main"><div class="user-name">' + u.name + fromFileBadge + (u.enabled ? '' : '<span class="tag-off">отключён</span>') + '</div>' +
+        '<div class="user-sessions">' + icons + '</div></div>' +
+        '<div class="user-actions">' +
+        '<button type="button" class="ghost" onclick="openUserModal(' + i + ')">Изменить</button>' +
+        '<button type="button" class="ghost ' + (removing ? 'danger-arm' : '') + '" onclick="armRemove(' + i + ')">' + (removing ? 'Точно?' : 'Удалить') + '</button>' +
+        '</div></div>';
+    }).join('');
+  }
+
+  (function () {
+    function bindFilepick(inputId, labelId, wrapId, emptyText) {
+      var input = document.getElementById(inputId), label = document.getElementById(labelId), wrap = document.getElementById(wrapId);
+      if (!input) return;
+      input.addEventListener('change', function () {
+        var f = input.files[0];
+        if (label) label.textContent = f ? f.name : emptyText;
+        if (wrap) wrap.classList.toggle('has-file', !!f);
+      });
+    }
+    bindFilepick('package', 'package-label', 'packagepick', 'Выберите .msi');
+    bindFilepick('import-file', 'import-label', 'importpick', 'Выбрать файл — поля заполнятся автоматически');
+    el('#import-file').addEventListener('change', function (e) {
+      var f = e.target.files[0];
+      if (f) importSettingsFile(f);
+    });
+
+    buildNav();
+    buildSessionGrid();
+    renderUsers();
+
+    // счётчик собранных пакетов — сам опрашивает сервер и обновляется без перезагрузки страницы
+    var counterBox = document.querySelector('.counter'), counterNum = document.querySelector('.counter-num');
+    var lastCount = counterNum ? (parseInt(counterNum.textContent, 10) || 0) : 0;
+    function pollCount() {
+      if (!counterNum) return;
+      fetch('{{ url_for("count") }}', { cache: 'no-store' })
+        .then(function (r) { return r.ok ? r.json() : null; })
+        .then(function (data) {
+          if (!data || data.count === lastCount) return;
+          lastCount = data.count;
+          counterNum.textContent = lastCount;
+          counterBox.classList.add('bump');
+          setTimeout(function () { counterBox.classList.remove('bump'); }, 500);
+        })
+        .catch(function () {});
+    }
+    setInterval(pollCount, 4000);
+
+    var buildForm = document.getElementById('build-form');
+    var goBtn = document.getElementById('go'), goLabel = goBtn.innerHTML;
+    buildForm.addEventListener('submit', function (ev) {
+      if (users.length === 0) {
+        ev.preventDefault();
+        showPane('users');
+        toast('Добавьте хотя бы одного пользователя');
+        return;
+      }
+      goBtn.disabled = true; goBtn.textContent = 'Собираю…';
+      setTimeout(function () { goBtn.disabled = false; goBtn.innerHTML = goLabel; }, 6000);
+      setTimeout(pollCount, 1200);
+      setTimeout(pollCount, 2500);
+    });
+  })();
+</script>
+</body>
+</html>
